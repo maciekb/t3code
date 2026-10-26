@@ -1,7 +1,6 @@
 import { Button } from "../../components/ui/Button";
 import deviceStreamScript from "@t3tools/mobile-device-stream";
 import {
-  useEffect,
   useEffectEvent,
   useImperativeHandle,
   useLayoutEffect,
@@ -104,14 +103,20 @@ function DeviceStreamDocumentView({
   readonly onRecoverProcess: () => boolean;
 }) {
   const webView = useRef<WebView<object>>(null);
-  const active = useRef(true);
+  const active = useRef(false);
   const failed = useRef(false);
+  const bootstrapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [status, setStatus] = useState<DeviceStreamStatus>("connecting");
   const [error, setError] = useState<string | null>(null);
-  const [started, setStarted] = useState(false);
+  const clearBootstrapTimer = () => {
+    if (bootstrapTimer.current === null) return;
+    clearTimeout(bootstrapTimer.current);
+    bootstrapTimer.current = null;
+  };
   const fail = (message: string) => {
     if (!active.current || failed.current) return;
     failed.current = true;
+    clearBootstrapTimer();
     void onInputConnected(false);
     webView.current?.injectJavaScript("window.T3DeviceStream?.stop(); true;");
     setError(message);
@@ -120,11 +125,21 @@ function DeviceStreamDocumentView({
   const bootstrapTimedOut = useEffectEvent(() =>
     fail("Device viewer could not start. Reconnect to try again."),
   );
-  useEffect(() => {
-    if (started) return;
-    const timer = setTimeout(bootstrapTimedOut, 15_000);
-    return () => clearTimeout(timer);
-  }, [started]);
+  const resetInput = useEffectEvent(() => void onInputConnected(false));
+  // The stream lives exactly as long as this view.
+  useLayoutEffect(() => {
+    active.current = true;
+    resetInput();
+    const view = webView.current;
+    bootstrapTimer.current = setTimeout(bootstrapTimedOut, 15_000);
+    return () => {
+      if (bootstrapTimer.current !== null) clearTimeout(bootstrapTimer.current);
+      bootstrapTimer.current = null;
+      active.current = false;
+      view?.injectJavaScript("window.T3DeviceStream?.stop(); true;");
+      resetInput();
+    };
+  }, []);
   const source = {
     html: deviceStreamDocument(configuration, deviceStreamScript),
     baseUrl,
@@ -145,16 +160,6 @@ function DeviceStreamDocumentView({
     right: () => command("right"),
     select: () => command("select"),
   }));
-  const resetInput = useEffectEvent(() => void onInputConnected(false));
-  useLayoutEffect(() => {
-    active.current = true;
-    resetInput();
-    const view = webView.current;
-    return () => {
-      active.current = false;
-      view?.injectJavaScript("window.T3DeviceStream?.stop(); true;");
-    };
-  }, []);
   const processTerminated = () => {
     if (!active.current || failed.current) return;
     void onInputConnected(false);
@@ -188,7 +193,7 @@ function DeviceStreamDocumentView({
           else if (message?.type === "retry") onRetry();
           else if (message?.type === "remoteButton") onRemoteButton(message.button);
           else if (message?.type === "status") {
-            setStarted(true);
+            clearBootstrapTimer();
             if (message.status === "error") fail(message.detail ?? "Device stream failed.");
             else {
               setStatus(message.status);
