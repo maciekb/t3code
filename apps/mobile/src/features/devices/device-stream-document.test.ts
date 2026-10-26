@@ -35,6 +35,13 @@ describe("native device stream document", () => {
 });
 
 describe("native device stream messages", () => {
+  it("decodes a TV remote command for the authenticated native RPC bridge", () => {
+    expect(deviceStreamMessage('{"type":"remoteButton","button":"select"}')).toEqual({
+      type: "remoteButton",
+      button: "select",
+    });
+    expect(deviceStreamMessage('{"type":"remoteButton","button":"unknown"}')).toBeNull();
+  });
   it.each([
     "invalid JSON",
     "null",

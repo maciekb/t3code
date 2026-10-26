@@ -43,6 +43,72 @@ const makeReady = (
 const udid = "SIM-1";
 
 describe("runDeviceAction", () => {
+  it.effect("sends tvOS remote input to a helper on the device host without an agent daemon", () =>
+    Effect.gen(function* () {
+      const { ready, calls } = makeReady();
+      yield* runDeviceAction(ready, "tvos", {
+        type: "pressRemoteButton",
+        deviceId: udid,
+        button: "right",
+      });
+      expect(calls).toHaveLength(1);
+      expect(calls[0]?.command).toBe(ready.nodePath);
+      expect(calls[0]?.args.slice(-3)).toEqual([udid, "79", ready.helpers.serveSimCli]);
+    }),
+  );
+
+  it.effect("reports a failed tvOS input helper instead of accepting a silent keypress", () =>
+    Effect.gen(function* () {
+      const { ready } = makeReady(() => ({ code: 7, stderr: "DTUHID unavailable" }));
+      const error = yield* runDeviceAction(ready, "tvos", {
+        type: "pressRemoteButton",
+        deviceId: udid,
+        button: "select",
+      }).pipe(Effect.flip);
+      expect(error._tag).toBe("DeviceOperationError");
+    }),
+  );
+
+  it.effect("rejects TV remote commands on phone targets", () =>
+    Effect.gen(function* () {
+      const { ready, calls } = makeReady();
+      const error = yield* runDeviceAction(ready, "ios", {
+        type: "pressRemoteButton",
+        deviceId: udid,
+        button: "right",
+      }).pipe(Effect.flip);
+      expect(error._tag).toBe("DeviceActionUnavailableError");
+      expect(calls).toEqual([]);
+    }),
+  );
+
+  it.effect("runs tvOS app actions on the Apple host", () =>
+    Effect.gen(function* () {
+      const { ready, calls } = makeReady();
+      yield* runDeviceAction(ready, "tvos", {
+        type: "launchApp",
+        deviceId: udid,
+        appId: "com.example.tv",
+      });
+      expect(calls).toEqual([
+        { command: "xcrun", args: ["simctl", "launch", udid, "com.example.tv"] },
+      ]);
+    }),
+  );
+
+  it.effect("rejects phone orientation on tvOS before running host commands", () =>
+    Effect.gen(function* () {
+      const { ready, calls } = makeReady();
+      const error = yield* runDeviceAction(ready, "tvos", {
+        type: "setOrientation",
+        deviceId: udid,
+        value: "portrait",
+      }).pipe(Effect.flip);
+      expect(error._tag).toBe("DeviceActionUnavailableError");
+      expect(calls).toEqual([]);
+    }),
+  );
+
   it.effect.each([
     ["emulator-5554", "Physical size: 2560x1600", "portrait", "-9.81:0:0"],
     ["emulator-5554", "Physical size: 2560x1600", "landscape_left", "0:9.81:0"],
@@ -63,6 +129,17 @@ describe("runDeviceAction", () => {
 });
 
 describe("readDeviceDetail", () => {
+  it.effect("reads tvOS appearance without querying phone accessibility or Android settings", () =>
+    Effect.gen(function* () {
+      const { ready, calls } = makeReady(() => ({ stdout: "dark\n" }));
+      expect(yield* readDeviceDetail(ready, "tvos", udid)).toEqual({
+        settings: { appearance: "dark" },
+        foregroundApp: null,
+      });
+      expect(calls).toEqual([{ command: "xcrun", args: ["simctl", "ui", udid, "appearance"] }]);
+    }),
+  );
+
   it.effect("reads iOS settings from simctl and the accessibility helper", () =>
     Effect.gen(function* () {
       const { ready } = makeReady((call) => {

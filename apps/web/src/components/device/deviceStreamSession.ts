@@ -10,7 +10,9 @@ import type { DeviceHubAccess } from "@t3tools/client-runtime/state/deviceHubAcc
 import type { DevicePlatform, EnvironmentId } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
 
-import { refreshDeviceHubAccess } from "~/state/device";
+import { runAtomCommand } from "@t3tools/client-runtime/state/runtime";
+
+import { deviceEnvironment, refreshDeviceHubAccess } from "~/state/device";
 
 export interface DeviceStreamState {
   readonly status: DeviceStreamStatus;
@@ -96,6 +98,17 @@ export const deviceStreamSessionAtom = Atom.family((key: DeviceStreamKey) =>
           if (duoControl.error && duoControl.error !== state.duoControl.error)
             controlRejectedListener?.();
           update({ duoControl });
+        },
+        onRemoteButton: (button) => {
+          void runAtomCommand(get.registry, deviceEnvironment.action, {
+            environmentId: key.environmentId,
+            input: {
+              type: "pressRemoteButton",
+              hostId: key.hostId,
+              deviceId: key.deviceId,
+              button,
+            },
+          });
         },
         onDuoUnavailable: () => update({ phoneUnavailable: true }),
         onStatus: (status, detail) =>

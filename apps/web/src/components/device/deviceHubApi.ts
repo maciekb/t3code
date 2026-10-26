@@ -39,7 +39,7 @@ export interface DeviceHubTarget {
 }
 
 const vendorBase = (target: DeviceHubTarget) =>
-  `${target.access.httpBase}${target.platform === "ios" ? "/vendor/serve-sim" : "/vendor/serve-emu"}`;
+  `${target.access.httpBase}${target.platform !== "android" ? "/vendor/serve-sim" : "/vendor/serve-emu"}`;
 
 const hubUrl = (target: DeviceHubTarget, path: string, params?: Record<string, string>) => {
   const search = params ? `?${new URLSearchParams(params).toString()}` : "";
@@ -103,7 +103,7 @@ export async function fetchDeviceAxTree(
   target: DeviceHubTarget,
   signal?: AbortSignal,
 ): Promise<DeviceAxTree> {
-  if (target.platform === "ios") {
+  if (target.platform !== "android") {
     const payload = await fetchJson(
       target,
       hubUrl(target, `/helper/${encodeURIComponent(target.deviceId)}/ax`),
@@ -175,7 +175,7 @@ export function subscribeDeviceForeground(
   target: DeviceHubTarget,
   onChange: (app: DeviceForegroundInfo | null) => void,
 ): () => void {
-  if (target.platform !== "ios") return () => {};
+  if (target.platform === "android") return () => {};
   return openEventSource(
     target,
     hubUrl(target, "/appstate", { device: target.deviceId }),
@@ -222,7 +222,7 @@ export function subscribeDeviceEventLog(
   target: DeviceHubTarget,
   onEvents: (entries: ReadonlyArray<DeviceEventLogEntry>, reset: boolean) => void,
 ): () => void {
-  if (target.platform !== "ios") return () => {};
+  if (target.platform === "android") return () => {};
   return openEventSource(
     target,
     hubUrl(target, "/api/event-log/events", { device: target.deviceId, limit: "100" }),

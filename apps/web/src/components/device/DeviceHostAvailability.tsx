@@ -13,12 +13,16 @@ export function DeviceHostAvailability({
         <Tooltip key={platform.platform}>
           <TooltipTrigger render={<span tabIndex={0} className="inline-flex items-center gap-1" />}>
             {platform.available ? <Check className="size-3" /> : <Minus className="size-3" />}
-            {platform.platform === "ios" ? "iOS" : "Android"}{" "}
+            {platform.platform === "tvos"
+              ? "tvOS"
+              : platform.platform === "ios"
+                ? "iOS"
+                : "Android"}{" "}
             {platform.available ? "available" : "unavailable"}
           </TooltipTrigger>
           <TooltipPopup>
             {platform.reason ??
-              (platform.platform === "ios" ? "iOS available" : "Android available")}
+              `${platform.platform === "tvos" ? "tvOS" : platform.platform === "ios" ? "iOS" : "Android"} available`}
           </TooltipPopup>
         </Tooltip>
       ))}

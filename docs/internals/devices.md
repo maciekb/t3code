@@ -17,6 +17,10 @@ depend on the registry. The hub is a supervised child rather than an imported
 middleware because serve-sim loads private CoreSimulator frameworks through a
 native addon, and a crash there must not take the server down.
 
+CoreSimulator 1155.4+ suppresses legacy keyboard HID on tvOS. Manual TV navigation
+therefore uses `device.action` and a [host-side DTUHID helper](../../apps/server/src/device/tvosRemote.ts),
+so it works without granting agents device access; Home stays on the hub's hardware-button path.
+
 Everything platform-specific sits behind
 [`DeviceHost`](../../apps/server/src/device/DeviceHost.ts). The service lists,
 boots, and shuts down devices through the host's device operations, and the

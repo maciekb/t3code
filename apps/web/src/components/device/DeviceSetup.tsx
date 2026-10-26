@@ -17,7 +17,8 @@ import { useAtomCommand } from "~/state/use-atom-command";
 import { readEnvironmentScope, useEnvironmentScope } from "~/state/session";
 import { cn } from "~/lib/utils";
 
-const platformName = (platform: DevicePlatform) => (platform === "ios" ? "iOS" : "Android");
+const platformName = (platform: DevicePlatform) =>
+  platform === "tvos" ? "tvOS" : platform === "ios" ? "iOS" : "Android";
 
 export const deviceHubDescription =
   "Enable this environment to open simulators and emulators, whether they run here or on a remote device host.";
@@ -106,8 +107,8 @@ export function platformSetupStatus(state: DeviceServiceState, platform: DeviceP
     return {
       ready: false,
       message:
-        platform === "ios"
-          ? "Xcode is installed, but no iOS Simulator is available. Install a runtime in Xcode Settings → Components."
+        platform !== "android"
+          ? `Xcode is installed, but no ${platformName(platform)} Simulator is available. Install a runtime in Xcode Settings → Components.`
           : "The Android SDK is installed, but no virtual device exists. Create one in Android Studio → Device Manager.",
     };
   }
@@ -120,8 +121,8 @@ export function platformSetupStatus(state: DeviceServiceState, platform: DeviceP
     message:
       remoteHost?.kind === "eas"
         ? `${remoteHost.label} starts iOS Simulators in the cloud with EAS Simulator.`
-        : platform === "ios"
-          ? `Xcode and iOS Simulator are available${location}.`
+        : platform !== "android"
+          ? `Xcode and ${platformName(platform)} Simulator are available${location}.`
           : `The Android SDK and Emulator are available${location}.`,
   };
 }
@@ -307,10 +308,11 @@ function DevicePlatformSetup(props: {
   return (
     <div className="space-y-3">
       <PlatformStatus platform="iOS" status={platformSetupStatus(props.state, "ios")} />
+      <PlatformStatus platform="tvOS" status={platformSetupStatus(props.state, "tvos")} />
       <PlatformStatus platform="Android" status={platformSetupStatus(props.state, "android")} />
       <DeviceHostDiagnostics hosts={props.state.hosts} hostStatuses={props.state.hostStatuses} />
       <p className="text-xs text-muted-foreground">
-        You can use either platform. Fixing a missing platform does not block the other one.
+        You can use any available platform. Fixing a missing platform does not block the other one.
       </p>
       <Button size="compact" variant="outline" disabled={props.disabled} onClick={props.onCheck}>
         {props.checking ? <Spinner size="xs" /> : null}

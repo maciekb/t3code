@@ -90,6 +90,7 @@ export function DeviceToolsPanel(props: {
   const { detail, pending, error, foregroundApp, disabled, act } = controls;
   const settings = detail?.settings;
   const isIos = device.platform === "ios";
+  const isTv = device.platform === "tvos";
 
   return (
     <div
@@ -150,21 +151,25 @@ export function DeviceToolsPanel(props: {
               </Button>
             </div>
           ) : null}
+          {!isTv ? (
+            <SubmitRow
+              placeholder="https://… or myapp://"
+              action="Open"
+              disabled={disabled}
+              onSubmit={(url) => act({ type: "openUrl", url })}
+            />
+          ) : null}
           <SubmitRow
-            placeholder="https://… or myapp://"
-            action="Open"
-            disabled={disabled}
-            onSubmit={(url) => act({ type: "openUrl", url })}
-          />
-          <SubmitRow
-            placeholder={isIos ? "Bundle ID to launch" : "Package name to launch"}
+            placeholder={
+              device.platform !== "android" ? "Bundle ID to launch" : "Package name to launch"
+            }
             action="Launch"
             disabled={disabled}
             onSubmit={(appId) => act({ type: "launchApp", appId })}
           />
         </Section>
 
-        <Section title={isIos ? "Simulator" : "Emulator"}>
+        <Section title={device.platform !== "android" ? "Simulator" : "Emulator"}>
           <Row label="Appearance">
             <ToggleGroup
               aria-label="Appearance"
@@ -180,148 +185,160 @@ export function DeviceToolsPanel(props: {
               <Toggle value="dark">Dark</Toggle>
             </ToggleGroup>
           </Row>
-          <Row label="Text size">
-            <ChoiceSelect
-              ariaLabel="Text size"
-              value={settings?.textSize ?? null}
-              options={TEXT_SIZES}
-              disabled={disabled}
-              onChange={(value) => act({ type: "setTextSize", value })}
-            />
-          </Row>
-          {isIos ? (
+          {!isTv ? (
             <>
-              <Row label="Liquid Glass">
-                <ToggleGroup
-                  aria-label="Liquid Glass"
-                  value={settings?.liquidGlass ? [settings.liquidGlass] : []}
-                  disabled={disabled || settings?.liquidGlass === undefined}
-                  onValueChange={(value) => {
-                    const next = value[0];
-                    if (next === "clear" || next === "tinted") {
-                      void act({ type: "setLiquidGlass", value: next });
-                    }
-                  }}
-                >
-                  <Toggle value="clear">Clear</Toggle>
-                  <Toggle value="tinted">Tinted</Toggle>
-                </ToggleGroup>
-              </Row>
-              <Row label="Color filter">
+              <Row label="Text size">
                 <ChoiceSelect
-                  ariaLabel="Color filter"
-                  value={settings?.colorFilter ?? null}
-                  options={COLOR_FILTERS}
+                  ariaLabel="Text size"
+                  value={settings?.textSize ?? null}
+                  options={TEXT_SIZES}
                   disabled={disabled}
-                  onChange={(value) => act({ type: "setColorFilter", value })}
+                  onChange={(value) => act({ type: "setTextSize", value })}
                 />
               </Row>
+              {isIos ? (
+                <>
+                  <Row label="Liquid Glass">
+                    <ToggleGroup
+                      aria-label="Liquid Glass"
+                      value={settings?.liquidGlass ? [settings.liquidGlass] : []}
+                      disabled={disabled || settings?.liquidGlass === undefined}
+                      onValueChange={(value) => {
+                        const next = value[0];
+                        if (next === "clear" || next === "tinted") {
+                          void act({ type: "setLiquidGlass", value: next });
+                        }
+                      }}
+                    >
+                      <Toggle value="clear">Clear</Toggle>
+                      <Toggle value="tinted">Tinted</Toggle>
+                    </ToggleGroup>
+                  </Row>
+                  <Row label="Color filter">
+                    <ChoiceSelect
+                      ariaLabel="Color filter"
+                      value={settings?.colorFilter ?? null}
+                      options={COLOR_FILTERS}
+                      disabled={disabled}
+                      onChange={(value) => act({ type: "setColorFilter", value })}
+                    />
+                  </Row>
+                </>
+              ) : (
+                <Row label="Orientation">
+                  <ChoiceSelect
+                    ariaLabel="Orientation"
+                    value={null}
+                    placeholder="Rotate to…"
+                    options={ORIENTATIONS}
+                    disabled={disabled}
+                    onChange={(value) => act({ type: "setOrientation", value })}
+                  />
+                </Row>
+              )}
+              <SwitchRow
+                label="Reduce Motion"
+                checked={settings?.reduceMotion}
+                disabled={disabled}
+                onChange={(value) => act({ type: "setToggle", setting: "reduceMotion", value })}
+              />
+              {isIos ? (
+                <>
+                  <SwitchRow
+                    label="Increase Contrast"
+                    checked={settings?.increaseContrast}
+                    disabled={disabled}
+                    onChange={(value) =>
+                      act({ type: "setToggle", setting: "increaseContrast", value })
+                    }
+                  />
+                  <SwitchRow
+                    label="Reduce Transparency"
+                    checked={settings?.reduceTransparency}
+                    disabled={disabled}
+                    onChange={(value) =>
+                      act({ type: "setToggle", setting: "reduceTransparency", value })
+                    }
+                  />
+                  <SwitchRow
+                    label="Show Borders"
+                    checked={settings?.showBorders}
+                    disabled={disabled}
+                    onChange={(value) => act({ type: "setToggle", setting: "showBorders", value })}
+                  />
+                  <SwitchRow
+                    label="VoiceOver"
+                    checked={settings?.voiceOver}
+                    disabled={disabled}
+                    onChange={(value) => act({ type: "setToggle", setting: "voiceOver", value })}
+                  />
+                </>
+              ) : (
+                <SwitchRow
+                  label="Network"
+                  checked={settings?.networkEnabled}
+                  disabled={disabled}
+                  onChange={(value) => act({ type: "setToggle", setting: "networkEnabled", value })}
+                />
+              )}
             </>
-          ) : (
-            <Row label="Orientation">
-              <ChoiceSelect
-                ariaLabel="Orientation"
-                value={null}
-                placeholder="Rotate to…"
-                options={ORIENTATIONS}
-                disabled={disabled}
-                onChange={(value) => act({ type: "setOrientation", value })}
-              />
-            </Row>
-          )}
-          <SwitchRow
-            label="Reduce Motion"
-            checked={settings?.reduceMotion}
-            disabled={disabled}
-            onChange={(value) => act({ type: "setToggle", setting: "reduceMotion", value })}
-          />
-          {isIos ? (
-            <>
+          ) : null}
+        </Section>
+
+        {!isTv ? (
+          <>
+            <Section title="Accessibility">
               <SwitchRow
-                label="Increase Contrast"
-                checked={settings?.increaseContrast}
-                disabled={disabled}
-                onChange={(value) => act({ type: "setToggle", setting: "increaseContrast", value })}
+                label="Overlay element frames"
+                checked={props.axOverlay}
+                disabled={props.access === null}
+                onChange={(value) => {
+                  props.onAxOverlayChange(value);
+                  return Promise.resolve();
+                }}
               />
-              <SwitchRow
-                label="Reduce Transparency"
-                checked={settings?.reduceTransparency}
-                disabled={disabled}
-                onChange={(value) =>
-                  act({ type: "setToggle", setting: "reduceTransparency", value })
-                }
-              />
-              <SwitchRow
-                label="Show Borders"
-                checked={settings?.showBorders}
-                disabled={disabled}
-                onChange={(value) => act({ type: "setToggle", setting: "showBorders", value })}
-              />
-              <SwitchRow
-                label="VoiceOver"
-                checked={settings?.voiceOver}
-                disabled={disabled}
-                onChange={(value) => act({ type: "setToggle", setting: "voiceOver", value })}
-              />
-            </>
-          ) : (
-            <SwitchRow
-              label="Network"
-              checked={settings?.networkEnabled}
+            </Section>
+
+            <LocationSection
               disabled={disabled}
-              onChange={(value) => act({ type: "setToggle", setting: "networkEnabled", value })}
+              canClear={isIos}
+              onSet={(latitude, longitude) => act({ type: "setLocation", latitude, longitude })}
+              onClear={() => act({ type: "clearLocation" })}
             />
-          )}
-        </Section>
 
-        <Section title="Accessibility">
-          <SwitchRow
-            label="Overlay element frames"
-            checked={props.axOverlay}
-            disabled={props.access === null}
-            onChange={(value) => {
-              props.onAxOverlayChange(value);
-              return Promise.resolve();
-            }}
-          />
-        </Section>
-
-        <LocationSection
-          disabled={disabled}
-          canClear={isIos}
-          onSet={(latitude, longitude) => act({ type: "setLocation", latitude, longitude })}
-          onClear={() => act({ type: "clearLocation" })}
-        />
-
-        <PermissionsSection
-          permissions={isIos ? IOS_PERMISSIONS : ANDROID_PERMISSIONS}
-          canReset={isIos}
-          defaultAppId={foregroundApp?.id ?? ""}
-          disabled={disabled}
-          onDecide={(appId, permission, decision) =>
-            act({ type: "setPermission", appId, permission, decision })
-          }
-        />
-
-        {isIos ? (
-          <Section title="Push notification">
-            <SubmitRow
-              placeholder="Alert text"
-              action="Send"
-              disabled={disabled || !foregroundApp}
-              onSubmit={(payload) =>
-                foregroundApp
-                  ? act({ type: "sendPush", appId: foregroundApp.id, payload })
-                  : Promise.resolve()
+            <PermissionsSection
+              permissions={isIos ? IOS_PERMISSIONS : ANDROID_PERMISSIONS}
+              canReset={isIos}
+              defaultAppId={foregroundApp?.id ?? ""}
+              disabled={disabled}
+              onDecide={(appId, permission, decision) =>
+                act({ type: "setPermission", appId, permission, decision })
               }
             />
-            {!foregroundApp ? (
-              <p className="text-xs text-muted-foreground">Open an app first.</p>
-            ) : null}
-          </Section>
-        ) : null}
 
-        {isIos && props.access ? <EventLogSection access={props.access} device={device} /> : null}
+            {isIos ? (
+              <Section title="Push notification">
+                <SubmitRow
+                  placeholder="Alert text"
+                  action="Send"
+                  disabled={disabled || !foregroundApp}
+                  onSubmit={(payload) =>
+                    foregroundApp
+                      ? act({ type: "sendPush", appId: foregroundApp.id, payload })
+                      : Promise.resolve()
+                  }
+                />
+                {!foregroundApp ? (
+                  <p className="text-xs text-muted-foreground">Open an app first.</p>
+                ) : null}
+              </Section>
+            ) : null}
+
+            {isIos && props.access ? (
+              <EventLogSection access={props.access} device={device} />
+            ) : null}
+          </>
+        ) : null}
       </div>
     </div>
   );

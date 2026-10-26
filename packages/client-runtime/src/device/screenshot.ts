@@ -12,7 +12,7 @@ export class DeviceScreenshotError extends Error {
 }
 
 export async function captureDeviceScreenshot(target: DeviceStreamTarget, signal: AbortSignal) {
-  const vendor = target.platform === "ios" ? "serve-sim" : "serve-emu";
+  const vendor = target.platform !== "android" ? "serve-sim" : "serve-emu";
   const url = withDeviceHubQuery(
     `${target.access.httpBase}/vendor/${vendor}/api/screenshot?device=${encodeURIComponent(target.deviceId)}`,
     target.access,

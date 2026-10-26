@@ -6,6 +6,7 @@ import {
 } from "@t3tools/contracts";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
 
@@ -29,6 +30,20 @@ const HubDeviceList = Schema.Struct({
     Schema.Array(Schema.Struct({ message: Schema.String, error: Schema.optional(Schema.String) })),
   ),
 });
+const AppleSimulatorList = Schema.Struct({
+  devices: Schema.Record(
+    Schema.String,
+    Schema.Array(
+      Schema.Struct({
+        udid: Schema.String,
+        name: Schema.String,
+        state: Schema.String,
+        isAvailable: Schema.Boolean,
+      }),
+    ),
+  ),
+});
+const decodeAppleSimulators = Schema.decodeUnknownEffect(Schema.fromJsonString(AppleSimulatorList));
 const HubActionResult = Schema.Struct({
   ok: Schema.Boolean,
   id: Schema.optional(Schema.String),
@@ -40,7 +55,7 @@ const HubActionResult = Schema.Struct({
 });
 
 const vendorPrefix = (platform: DevicePlatform) =>
-  platform === "ios" ? "/vendor/serve-sim" : "/vendor/serve-emu";
+  platform !== "android" ? "/vendor/serve-sim" : "/vendor/serve-emu";
 
 /** Device operations for a host that runs expo-device-hub at `origin`. */
 export const makeDeviceHubOperations = (options: {
@@ -50,6 +65,7 @@ export const makeDeviceHubOperations = (options: {
   readonly run: DeviceHostReady["run"];
   /** Whether to list AVDs, which the hub does not report until they boot. */
   readonly androidAvailable: Effect.Effect<boolean>;
+  readonly appleAvailable?: Effect.Effect<boolean>;
 }): DeviceOperations => {
   const { hostId, origin, run } = options;
   const httpClient = options.http.pipe(HttpClient.withScope);
@@ -85,7 +101,7 @@ export const makeDeviceHubOperations = (options: {
 
   // Booting alone does not attach a serve-sim helper; the grid start does both
   // and is idempotent for a booted simulator.
-  const attachIosStream = (udid: string, operation: string) =>
+  const attachAppleStream = (udid: string, operation: string) =>
     postJson(`${vendorPrefix("ios")}/grid/api/start`, { udid }, operation).pipe(
       Effect.flatMap((request) => hubJson(request, HubActionResult, "attach stream", BOOT_TIMEOUT)),
     );
@@ -107,6 +123,37 @@ export const makeDeviceHubOperations = (options: {
         ),
     );
     const details = warnings?.map((error) => error.message) ?? [];
+    // The pinned hub only lists iOS; simctl also exposes tvOS, including unused simulators.
+    if (yield* options.appleAvailable ?? Effect.succeed(false)) {
+      const listed = yield* run("xcrun", ["simctl", "list", "devices", "available", "--json"]).pipe(
+        Effect.filterOrFail(
+          (result) => result.code === 0,
+          (result) => result,
+        ),
+        Effect.flatMap((result) => decodeAppleSimulators(result.stdout)),
+        Effect.option,
+      );
+      if (Option.isSome(listed)) {
+        for (const [runtime, simulators] of Object.entries(listed.value.devices)) {
+          const version = /\.SimRuntime\.tvOS-(.+)$/.exec(runtime)?.[1];
+          if (!version) continue;
+          for (const simulator of simulators) {
+            if (!simulator.isAvailable || devices.some((device) => device.id === simulator.udid))
+              continue;
+            devices.push({
+              id: simulator.udid,
+              name: simulator.name,
+              platform: "tvos",
+              version: `tvOS ${version.replaceAll("-", ".")}`,
+              booted: simulator.state === "Booted",
+              physical: false,
+            });
+          }
+        }
+      } else {
+        details.push("Could not list tvOS simulators. Check xcrun simctl on the device host.");
+      }
+    }
     let androidDiscoveryIncomplete = false;
     if (yield* options.androidAvailable) {
       const avds = yield* run("emulator", ["-list-avds"]);
@@ -141,6 +188,23 @@ export const makeDeviceHubOperations = (options: {
   }).pipe(Effect.withSpan("DeviceHubOperations.list"));
 
   const boot: DeviceOperations["boot"] = Effect.fn("DeviceHubOperations.boot")(function* (device) {
+    if (device.platform === "tvos") {
+      yield* attachAppleStream(device.id, "boot").pipe(
+        Effect.flatMap((result) =>
+          result.ok
+            ? Effect.void
+            : Effect.fail(
+                new DeviceBootError({
+                  hostId,
+                  deviceId: device.id,
+                  reason: "launch_failed",
+                  cause: result,
+                }),
+              ),
+        ),
+      );
+      return device.id;
+    }
     const result = yield* postJson(
       "/api/devices/boot",
       { platform: device.platform, id: device.id, name: device.name },
@@ -173,13 +237,25 @@ export const makeDeviceHubOperations = (options: {
         cause: result,
       });
     }
-    if (device.platform === "ios") yield* attachIosStream(device.id, "boot");
+    if (device.platform !== "android") yield* attachAppleStream(device.id, "boot");
     return result.serial ?? result.id ?? device.id;
   });
 
   const attach: DeviceOperations["attach"] = (device) =>
-    device.platform === "ios"
-      ? attachIosStream(device.id, "open").pipe(Effect.asVoid)
+    device.platform !== "android"
+      ? attachAppleStream(device.id, "open").pipe(
+          Effect.flatMap((result) =>
+            result.ok
+              ? Effect.void
+              : Effect.fail(
+                  new DeviceOperationError({
+                    operation: "attach stream",
+                    reason: "hub_rejected",
+                    cause: result,
+                  }),
+                ),
+          ),
+        )
       : Effect.void;
 
   const shutdown: DeviceOperations["shutdown"] = Effect.fn("DeviceHubOperations.shutdown")(
@@ -203,13 +279,15 @@ export const makeDeviceHubOperations = (options: {
       // runs `simctl shutdown`; the hub's generic shutdown can leave that
       // session cached across a reboot. serve-sim runs simctl bare, though, so
       // a simulator that is already off fails there.
-      yield* device.platform === "ios"
+      yield* device.platform !== "android"
         ? postShutdown(`${vendorPrefix("ios")}/grid/api/shutdown`, { udid: device.id }).pipe(
             Effect.catch((cause) =>
               list.pipe(
                 Effect.flatMap(({ devices }) =>
                   devices.find((candidate) => candidate.id === device.id)?.booted === false
-                    ? Effect.logInfo("iOS simulator was already shut down", { deviceId: device.id })
+                    ? Effect.logInfo("Apple simulator was already shut down", {
+                        deviceId: device.id,
+                      })
                     : Effect.fail(cause),
                 ),
               ),

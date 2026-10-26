@@ -4,7 +4,7 @@ import * as SchemaTransformation from "effect/SchemaTransformation";
 
 import { ThreadId, TrimmedNonEmptyString, TrimmedString } from "./baseSchemas.ts";
 
-export const DevicePlatform = Schema.Literals(["ios", "android"]);
+export const DevicePlatform = Schema.Literals(["ios", "android", "tvos"]);
 export type DevicePlatform = typeof DevicePlatform.Type;
 
 export const DeviceHostId = TrimmedNonEmptyString.check(Schema.isMaxLength(128));
@@ -221,11 +221,39 @@ const DeviceServiceStateWire = Schema.Struct({
   ...deviceServiceStateFields,
   hosts: Schema.Array(MachineDeviceHostSummary),
   easHosts: Schema.optional(Schema.Array(EasDeviceHostSummary)),
+  // Older clients reject unknown platforms even in a host's availability list.
+  tvos: Schema.optional(
+    Schema.Struct({
+      devices: Schema.Array(Schema.Struct({ index: Schema.Int, value: DeviceSummary })),
+      sessions: Schema.Array(Schema.Struct({ index: Schema.Int, value: DeviceSession })),
+      bootingDevices: Schema.optional(
+        Schema.Array(
+          Schema.Struct({
+            index: Schema.Int,
+            value: Schema.Struct({ ...DeviceSummary.fields, threadId: ThreadId }),
+          }),
+        ),
+      ),
+      platforms: Schema.Record(DeviceHostId, DevicePlatformAvailability),
+    }),
+  ),
 });
 const DeviceServiceStateDecoded = Schema.Struct({
   ...deviceServiceStateFields,
   hosts: Schema.Array(DeviceHostSummary),
 });
+
+const tvosEntries = <A extends { readonly platform: DevicePlatform }>(values: ReadonlyArray<A>) =>
+  values.flatMap((value, index) => (value.platform === "tvos" ? [{ index, value }] : []));
+
+const restoreDeviceOrder = <A>(
+  values: ReadonlyArray<A>,
+  entries: ReadonlyArray<{ readonly index: number; readonly value: A }> = [],
+) => {
+  const result = [...values];
+  for (const { index, value } of entries) result.splice(index, 0, value);
+  return result;
+};
 
 export const DeviceServiceState = DeviceServiceStateWire.pipe(
   Schema.decodeTo(
@@ -234,19 +262,50 @@ export const DeviceServiceState = DeviceServiceStateWire.pipe(
       typeof DeviceServiceStateDecoded.Type,
       typeof DeviceServiceStateWire.Type
     >({
-      decode: ({ easHosts, ...state }) => ({
+      decode: ({ easHosts, tvos, ...state }) => ({
         ...state,
-        hosts: [...state.hosts, ...(easHosts ?? [])],
+        devices: restoreDeviceOrder(state.devices, tvos?.devices),
+        sessions: restoreDeviceOrder(state.sessions, tvos?.sessions),
+        ...(state.bootingDevices || tvos?.bootingDevices
+          ? {
+              bootingDevices: restoreDeviceOrder(state.bootingDevices ?? [], tvos?.bootingDevices),
+            }
+          : {}),
+        hosts: [...state.hosts, ...(easHosts ?? [])].map((host) => {
+          const platform = tvos?.platforms[host.id];
+          return platform ? { ...host, platforms: [...host.platforms, platform] } : host;
+        }),
       }),
-      encode: (state) => ({
-        ...state,
-        hosts: state.hosts.filter(
-          (host): host is typeof MachineDeviceHostSummary.Type => host.kind !== "eas",
-        ),
-        easHosts: state.hosts.filter(
-          (host): host is typeof EasDeviceHostSummary.Type => host.kind === "eas",
-        ),
-      }),
+      encode: (state) => {
+        const hosts = state.hosts.map((host) => ({
+          ...host,
+          platforms: host.platforms.filter((platform) => platform.platform !== "tvos"),
+        }));
+        return {
+          ...state,
+          devices: state.devices.filter((device) => device.platform !== "tvos"),
+          sessions: state.sessions.filter((session) => session.platform !== "tvos"),
+          ...(state.bootingDevices
+            ? {
+                bootingDevices: state.bootingDevices.filter((device) => device.platform !== "tvos"),
+              }
+            : {}),
+          hosts: hosts.filter((host) => host.kind !== "eas"),
+          easHosts: hosts.filter((host) => host.kind === "eas"),
+          tvos: {
+            devices: tvosEntries(state.devices),
+            sessions: tvosEntries(state.sessions),
+            ...(state.bootingDevices ? { bootingDevices: tvosEntries(state.bootingDevices) } : {}),
+            platforms: Object.fromEntries(
+              state.hosts.flatMap((host) =>
+                host.platforms
+                  .filter((platform) => platform.platform === "tvos")
+                  .map((platform) => [host.id, platform]),
+              ),
+            ),
+          },
+        };
+      },
     }),
   ),
 );
@@ -369,7 +428,22 @@ const DeviceTarget = {
   deviceId: DeviceId,
 };
 
+export const DeviceTvRemoteButton = Schema.Literals([
+  "up",
+  "down",
+  "left",
+  "right",
+  "select",
+  "back",
+]);
+export type DeviceTvRemoteButton = typeof DeviceTvRemoteButton.Type;
+
 export const DeviceActionInput = Schema.Union([
+  Schema.Struct({
+    ...DeviceTarget,
+    type: Schema.Literal("pressRemoteButton"),
+    button: DeviceTvRemoteButton,
+  }),
   Schema.Struct({
     ...DeviceTarget,
     type: Schema.Literal("setAppearance"),
@@ -570,7 +644,7 @@ export const DeviceToolOpenInput = Schema.Struct({
   ),
   platform: Schema.optional(
     DevicePlatform.annotate({
-      description: "Needed with no `deviceId` when both platforms exist.",
+      description: "Needed with no `deviceId` when several platforms exist.",
     }),
   ),
   hostId: Schema.optional(

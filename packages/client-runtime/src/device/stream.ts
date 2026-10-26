@@ -11,7 +11,7 @@ import * as Option from "effect/Option";
 import { createCanvasFrameSink, type DeviceFrameSink } from "./frame.ts";
 import { simulatorAvcConfig } from "./avcConfig.ts";
 import { type DeviceHubAccess, withDeviceHubQuery } from "./hubAccess.ts";
-import type { DevicePlatform } from "@t3tools/contracts";
+import type { DevicePlatform, DeviceTvRemoteButton } from "@t3tools/contracts";
 
 export type DeviceStreamStatus = "connecting" | "streaming" | "error";
 
@@ -110,6 +110,7 @@ export interface DeviceStreamEvents {
    */
   readonly onCanvasVideo?: () => void;
   readonly onInputConnected: (connected: boolean, detail?: string) => void;
+  readonly onRemoteButton?: (button: DeviceTvRemoteButton) => void;
 }
 
 export interface DeviceStreamTarget {
@@ -122,7 +123,28 @@ export interface DeviceStreamTarget {
   readonly videoOnly?: boolean;
 }
 
-export type DeviceHardwareButton = "home" | "back" | "recents" | "power" | "appSwitcher";
+export type DeviceHardwareButton =
+  | "home"
+  | "back"
+  | "recents"
+  | "power"
+  | "appSwitcher"
+  | "up"
+  | "down"
+  | "left"
+  | "right"
+  | "select";
+
+const TV_REMOTE_KEY: Record<string, DeviceTvRemoteButton> = {
+  ArrowUp: "up",
+  ArrowDown: "down",
+  ArrowLeft: "left",
+  ArrowRight: "right",
+  Enter: "select",
+  Escape: "back",
+};
+// The hub's named Home action launches iOS SpringBoard; tvOS needs the hardware HID event.
+const TV_HOME_BUTTON = { button: "home", page: 0x0c, usage: 0x40 };
 
 const RETRY_DELAY_MS = 1_000;
 const FIRST_FRAME_TIMEOUT_MS = 15_000;
@@ -388,12 +410,12 @@ export function createDeviceStreamClient(
 ): DeviceStreamClient {
   const { access, platform, deviceId } = target;
   const sink = "present" in output ? output : createCanvasFrameSink(output);
-  const vendor = platform === "ios" ? "/vendor/serve-sim" : "/vendor/serve-emu";
+  const vendor = platform !== "android" ? "/vendor/serve-sim" : "/vendor/serve-emu";
   const device = encodeURIComponent(deviceId);
   const httpUrl = (path: string) =>
     withDeviceHubQuery(`${access.httpBase}${vendor}${path}`, access);
   const wsUrl = (path: string) => withDeviceHubQuery(`${access.wsBase}${vendor}${path}`, access);
-  const useWebCodecs = isWebCodecsSupported() && !(platform === "ios" && target.preferMjpeg);
+  const useWebCodecs = isWebCodecsSupported() && !(platform !== "android" && target.preferMjpeg);
 
   let stopped = true;
   let socket: WebSocket | null = null;
@@ -572,7 +594,7 @@ export function createDeviceStreamClient(
   };
 
   const recoverDecoder = () => {
-    if (platform === "ios") fallBackToMjpeg();
+    if (platform !== "android") fallBackToMjpeg();
     else {
       closeDecoder();
       connecting("Video decoder restarted.");
@@ -587,7 +609,7 @@ export function createDeviceStreamClient(
         try {
           if (
             videoDecoder === decoder &&
-            (platform !== "ios" || feedGeneration === videoGeneration)
+            (platform === "android" || feedGeneration === videoGeneration)
           ) {
             decodedVideoGeneration = feedGeneration;
             paint(frame, frame.displayWidth, frame.displayHeight);
@@ -600,7 +622,7 @@ export function createDeviceStreamClient(
         if (
           stopped ||
           videoDecoder !== decoder ||
-          (platform === "ios" && feedGeneration !== videoGeneration)
+          (platform !== "android" && feedGeneration !== videoGeneration)
         )
           return;
         recoverDecoder();
@@ -638,7 +660,7 @@ export function createDeviceStreamClient(
       awaitingKeyframe = false;
     }
     if (videoDecoder.decodeQueueSize > SOFT_DECODE_QUEUE) {
-      if (platform !== "ios") {
+      if (platform === "android") {
         recoverDecoder();
         return;
       }
@@ -1231,7 +1253,7 @@ export function createDeviceStreamClient(
     iosInputAdmitted = false;
     iosInputUnavailable = false;
     connecting();
-    if (platform === "ios") {
+    if (platform !== "android") {
       if (!target.videoOnly) void connectIosInput();
       if (useWebCodecs) void readIosVideo();
       else fallBackToMjpeg();
@@ -1275,7 +1297,7 @@ export function createDeviceStreamClient(
   const send = (payload: Uint8Array<ArrayBuffer> | string) => {
     if (
       !stopped &&
-      (platform !== "ios" || (iosInputAdmitted && !iosInputUnavailable)) &&
+      (platform === "android" || (iosInputAdmitted && !iosInputUnavailable)) &&
       socket?.readyState === WebSocket.OPEN
     )
       socket.send(payload);
@@ -1284,7 +1306,7 @@ export function createDeviceStreamClient(
   const rawPoint = (x: number, y: number) => {
     // serve-sim streams the raw framebuffer; rotated devices need input
     // remapped into that raw space.
-    if (platform !== "ios" || !screen || screen.width > screen.height) return { x, y };
+    if (platform === "android" || !screen || screen.width > screen.height) return { x, y };
     switch (screen.orientation) {
       case "landscape_left":
         return { x: y, y: 1 - x };
@@ -1306,7 +1328,7 @@ export function createDeviceStreamClient(
       if (platform === "ios") send(taggedJson(IOS_MSG_TOUCH, { type: phase, x, y }));
     },
     setDuoPanels(panels) {
-      if (platform !== "ios" || target.videoOnly || stopped || panelSinks === panels) return;
+      if (platform === "android" || target.videoOnly || stopped || panelSinks === panels) return;
       if (panels && !screen?.supportsHingeAngle) return;
       panelSinks = panels;
       videoGeneration++;
@@ -1326,7 +1348,8 @@ export function createDeviceStreamClient(
       startDuoVideo(panels);
     },
     sendTouch: (phase, x, y) => {
-      if (platform === "ios") {
+      if (platform === "tvos") return;
+      if (platform !== "android") {
         send(taggedJson(IOS_MSG_TOUCH, { type: phase, ...rawPoint(x, y) }));
         return;
       }
@@ -1334,7 +1357,17 @@ export function createDeviceStreamClient(
       send(JSON.stringify({ type: "touch", action, x, y }));
     },
     sendKey: (event, phase) => {
-      if (platform === "ios") {
+      if (platform === "tvos" && event.key === "Home") {
+        send(taggedJson(IOS_MSG_BUTTON, { ...TV_HOME_BUTTON, phase }));
+        return;
+      }
+      if (platform === "tvos") {
+        const button = TV_REMOTE_KEY[event.code];
+        if (phase === "down" && !stopped && iosInputAdmitted && !iosInputUnavailable && button)
+          events.onRemoteButton?.(button);
+        return;
+      }
+      if (platform !== "android") {
         const usage = hidUsageForCode(event.code);
         if (usage !== null) send(taggedJson(IOS_MSG_KEY, { type: phase, usage }));
         return;
@@ -1366,7 +1399,27 @@ export function createDeviceStreamClient(
       if (chunk.length > 0) send(JSON.stringify({ type: "text", text: chunk }));
     },
     pressButton: (button) => {
-      if (platform === "ios") {
+      if (platform === "tvos") {
+        if (button === "home") {
+          send(taggedJson(IOS_MSG_BUTTON, TV_HOME_BUTTON));
+          return;
+        }
+        if (
+          !stopped &&
+          iosInputAdmitted &&
+          !iosInputUnavailable &&
+          (button === "up" ||
+            button === "down" ||
+            button === "left" ||
+            button === "right" ||
+            button === "select" ||
+            button === "back")
+        ) {
+          events.onRemoteButton?.(button);
+        }
+        return;
+      }
+      if (platform !== "android") {
         const name =
           button === "home"
             ? "home"

@@ -1,6 +1,6 @@
 # Devices
 
-The Device panel shows a live iOS Simulator or Android Emulator next to a
+The Device panel shows a live iOS Simulator, tvOS Simulator, or Android Emulator next to a
 thread, so you can watch an agent verify mobile work and tap the device
 yourself. Agents get the same device through `device_*` tools and the
 `agent-device` command line, which T3 Code sets up for them.
@@ -33,13 +33,21 @@ Studio's Device Manager. T3 Code detects standard SDK locations; set
 `ANDROID_HOME` for a custom location. The panel explains missing dependencies.
 After installing SDK tools, restart the environment server and refresh devices.
 
+For Apple TV apps, install a tvOS Simulator runtime in Xcode Settings → Components
+and create an Apple TV simulator in Xcode's Devices and Simulators window. Choose
+it under **Apple TV Simulators** in the Device panel. Use the remote controls to
+move focus and select items; on web and desktop, focus the screen and use the
+arrow keys, Enter, Escape (Menu), and Home. Agents use `agent-device tv-remote`
+with the target returned by `device_open`. tvOS works on local Macs and SSH Mac
+hosts; physical Apple TVs and EAS Simulator tvOS sessions are not supported.
+
 Android emulator video also needs `ffmpeg` with the libx264 encoder on the device
 host's PATH, or an executable selected by `SERVE_EMU_FFMPEG` on that host. If
 opening an emulator reports an ffmpeg problem, install or fix the executable
 and retry opening it. After changing PATH or `SERVE_EMU_FFMPEG`, restart the
 environment server for local devices, or turn device support off and on for SSH
 devices, so the running tools inherit the new environment. Physical Android
-devices and iOS do not need ffmpeg.
+devices, iOS, and tvOS do not need ffmpeg.
 
 The screen is interactive: click and drag to touch, type while the screen is
 focused, and use the toolbar for Home, Back, and Recents on Android, rotate on
@@ -93,7 +101,7 @@ started from then on; your own Device panel is unaffected.
 
 The device stream goes through the environment server, so it works over the
 local network, Tailscale, and T3 Connect. Live video needs a secure page
-(HTTPS or localhost); on a plain-HTTP remote origin iOS falls back to a slower
+(HTTPS or localhost); on a plain-HTTP remote origin iOS and tvOS fall back to a slower
 still-image stream and Android cannot show video.
 
 ## SSH device hosts

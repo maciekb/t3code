@@ -36,6 +36,10 @@ const NO_AX_ATOM = Atom.make(AsyncResult.initial<ReadonlyArray<DeviceAxElement>,
 const CONTROLS_RAIL_WIDTH = 56;
 
 function screenAspect(platform: DevicePlatform, screen: DeviceScreenSize | null): number {
+  if (platform === "tvos")
+    return screen
+      ? Math.max(screen.width, screen.height) / Math.min(screen.width, screen.height)
+      : 16 / 9;
   if (!screen) return platform === "ios" ? 9 / 19.5 : 9 / 20;
   const landscape =
     screen.orientation === "landscape_left" || screen.orientation === "landscape_right";
@@ -148,6 +152,7 @@ export function DeviceStreamView(props: {
   const retainingFrame =
     status === "connecting" && hasFrame && inputState.connected && screen !== null;
   const showPhone =
+    props.platform !== "tvos" &&
     props.allowPhoneView &&
     (status === "streaming" || retainingFrame) &&
     props.visible &&
@@ -208,15 +213,17 @@ export function DeviceStreamView(props: {
   };
 
   const phoneUnavailableReason =
-    isDuo && !screen?.supportsHingeAngle
-      ? "iPhone Duo 3D requires Device Hub 0.11.0 or newer"
-      : phoneUnavailable
-        ? "3D is unavailable on this browser"
-        : mjpegUrl
-          ? "3D requires the H.264 stream"
-          : props.axOverlay
-            ? "Turn off accessibility frames to use 3D"
-            : null;
+    props.platform === "tvos"
+      ? "3D view is unavailable for Apple TV"
+      : isDuo && !screen?.supportsHingeAngle
+        ? "iPhone Duo 3D requires Device Hub 0.11.0 or newer"
+        : phoneUnavailable
+          ? "3D is unavailable on this browser"
+          : mjpegUrl
+            ? "3D requires the H.264 stream"
+            : props.axOverlay
+              ? "Turn off accessibility frames to use 3D"
+              : null;
 
   const keyboardSource = deviceKeyboard(props.platform, props.deviceName ?? "");
   const resetView = () => {
@@ -305,7 +312,7 @@ export function DeviceStreamView(props: {
         )}
         tabIndex={0}
         role="application"
-        aria-label={`${props.platform === "ios" ? "iOS Simulator" : "Android Emulator"} screen`}
+        aria-label={`${props.platform === "tvos" ? "Apple TV Simulator" : props.platform === "ios" ? "iOS Simulator" : "Android Emulator"} screen`}
         onKeyDown={(event) => {
           if (event.target !== event.currentTarget) return;
           if (event.metaKey && !["r", "R"].includes(event.key)) return;

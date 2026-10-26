@@ -13,6 +13,20 @@ const device = {
 };
 
 describe("device tool helpers", () => {
+  it("targets Apple TV and teaches focus navigation", () => {
+    const text = agentDeviceQuickStart({
+      ...device,
+      platform: "tvos",
+      name: "Apple TV",
+      version: "tvOS 26.0",
+    });
+    expect(text).toContain("--platform ios --target tv --udid ABCD-1234");
+    expect(text).toContain("tv-remote press down");
+    expect(text).toContain("tv-remote press select");
+    expect(text).not.toContain("click @e3");
+    expect(text).not.toContain("Android snapshot helper");
+  });
+
   it("uses the absolute launcher in every quick-start command", () => {
     const text = agentDeviceQuickStart(
       device,
