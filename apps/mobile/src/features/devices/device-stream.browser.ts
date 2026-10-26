@@ -18,7 +18,9 @@ export function stop() {
   activeClient = null;
 }
 
-export function command(button: "home" | "back" | "appSwitcher" | "rotate") {
+export function command(
+  button: "home" | "back" | "appSwitcher" | "rotate" | "up" | "down" | "left" | "right" | "select",
+) {
   if (button === "rotate") activeClient?.rotate();
   else activeClient?.pressButton(button);
 }
@@ -50,7 +52,11 @@ export function start(configuration: DeviceStreamConfiguration) {
   frame.setAttribute("role", "application");
   frame.setAttribute(
     "aria-label",
-    platform === "ios" ? "iOS Simulator screen" : "Android Emulator screen",
+    platform === "tvos"
+      ? "Apple TV Simulator screen"
+      : platform === "ios"
+        ? "iOS Simulator screen"
+        : "Android Emulator screen",
   );
   frame.tabIndex = 0;
   Object.assign(frame.style, {
@@ -96,11 +102,16 @@ export function start(configuration: DeviceStreamConfiguration) {
   const layout = (screen: DeviceScreenSize | null) => {
     const landscape =
       screen?.orientation === "landscape_left" || screen?.orientation === "landscape_right";
-    const aspect = screen
-      ? landscape
-        ? Math.max(screen.width, screen.height) / Math.min(screen.width, screen.height)
-        : Math.min(screen.width, screen.height) / Math.max(screen.width, screen.height)
-      : 9 / 19.5;
+    const aspect =
+      platform === "tvos"
+        ? screen
+          ? Math.max(screen.width, screen.height) / Math.min(screen.width, screen.height)
+          : 16 / 9
+        : screen
+          ? landscape
+            ? Math.max(screen.width, screen.height) / Math.min(screen.width, screen.height)
+            : Math.min(screen.width, screen.height) / Math.max(screen.width, screen.height)
+          : 9 / 19.5;
     const rotation =
       platform === "ios" && screen && screen.width <= screen.height
         ? screen.orientation === "landscape_left"
@@ -131,10 +142,11 @@ export function start(configuration: DeviceStreamConfiguration) {
     if (activeClient === client) post({ type: "unauthorized" });
   };
   const client = createDeviceStreamClient(
-    { ...configuration, preferMjpeg: platform === "ios" },
+    { ...configuration, preferMjpeg: platform !== "android" },
     canvas,
     {
       onStatus: reportStatus,
+      onRemoteButton: (button) => post({ type: "remoteButton", button }),
       onScreen: layout,
       onMjpegFallback: () => {
         canvas.style.display = "none";

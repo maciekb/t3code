@@ -1,9 +1,15 @@
-import type { DevicePlatform, EnvironmentId } from "@t3tools/contracts";
+import type { DevicePlatform, DeviceTvRemoteButton, EnvironmentId } from "@t3tools/contracts";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 import { Button } from "~/components/ui/button";
-import { refreshDeviceHubAccess, renewDeviceHubAccess, useDeviceHubAccess } from "~/state/device";
+import {
+  deviceEnvironment,
+  refreshDeviceHubAccess,
+  renewDeviceHubAccess,
+  useDeviceHubAccess,
+} from "~/state/device";
+import { useAtomCommand } from "~/state/use-atom-command";
 import { createCanvasFrameSink } from "@t3tools/client-runtime/device/frame";
 import { resolveDeviceShape } from "@t3tools/client-runtime/device/shape-profile";
 import { deviceKeyboard, deviceModel } from "./deviceModels";
@@ -29,6 +35,10 @@ const AX_POLL_INTERVAL_MS = 2_000;
 const CONTROLS_RAIL_WIDTH = 56;
 
 function screenAspect(platform: DevicePlatform, screen: DeviceScreenSize | null): number {
+  if (platform === "tvos")
+    return screen
+      ? Math.max(screen.width, screen.height) / Math.min(screen.width, screen.height)
+      : 16 / 9;
   if (!screen) return platform === "ios" ? 9 / 19.5 : 9 / 20;
   const landscape =
     screen.orientation === "landscape_left" || screen.orientation === "landscape_right";
@@ -98,6 +108,18 @@ export function DeviceStreamView(props: {
   const [keyboardAttached, setKeyboardAttached] = useState(false);
   const [phoneUnavailable, setPhoneUnavailable] = useState(false);
   const onPhoneUnavailable = useStableCallback(() => setPhoneUnavailable(true));
+  const runAction = useAtomCommand(deviceEnvironment.action);
+  const onRemoteButton = useStableCallback((button: DeviceTvRemoteButton) => {
+    void runAction({
+      environmentId: props.environmentId,
+      input: {
+        type: "pressRemoteButton",
+        hostId: props.hostId,
+        deviceId: props.deviceId,
+        button,
+      },
+    });
+  });
   const cancelPhoneInputRef = useRef<(() => void) | null>(null);
   const cancelPhoneInput = useStableCallback(() => cancelPhoneInputRef.current?.());
   const resetViewRef = useRef<(() => void) | null>(null);
@@ -142,6 +164,7 @@ export function DeviceStreamView(props: {
       createCanvasFrameSink(canvas, () => frameListenerRef.current?.()),
       {
         onDuoControl: setDuoControl,
+        onRemoteButton,
         onDuoUnavailable: onPhoneUnavailable,
         onStatus: (next, nextDetail) => {
           setStatus(next);
@@ -192,6 +215,7 @@ export function DeviceStreamView(props: {
     cancelPhoneInput,
     onHandle,
     onPhoneUnavailable,
+    onRemoteButton,
     onScreen,
     props.deviceId,
     props.environmentId,
@@ -204,6 +228,7 @@ export function DeviceStreamView(props: {
   const retainingFrame =
     status === "connecting" && hasFrame && inputState.connected && screen !== null;
   const showPhone =
+    props.platform !== "tvos" &&
     props.allowPhoneView &&
     (status === "streaming" || retainingFrame) &&
     props.visible &&
@@ -288,15 +313,17 @@ export function DeviceStreamView(props: {
   };
 
   const phoneUnavailableReason =
-    isDuo && !screen?.supportsHingeAngle
-      ? "iPhone Duo 3D requires Device Hub 0.11.0 or newer"
-      : phoneUnavailable
-        ? "3D is unavailable on this browser"
-        : mjpegUrl
-          ? "3D requires the H.264 stream"
-          : props.axOverlay
-            ? "Turn off accessibility frames to use 3D"
-            : null;
+    props.platform === "tvos"
+      ? "3D view is unavailable for Apple TV"
+      : isDuo && !screen?.supportsHingeAngle
+        ? "iPhone Duo 3D requires Device Hub 0.11.0 or newer"
+        : phoneUnavailable
+          ? "3D is unavailable on this browser"
+          : mjpegUrl
+            ? "3D requires the H.264 stream"
+            : props.axOverlay
+              ? "Turn off accessibility frames to use 3D"
+              : null;
 
   const keyboardSource = deviceKeyboard(props.platform, props.deviceName ?? "");
   const resetView = () => {
@@ -378,7 +405,7 @@ export function DeviceStreamView(props: {
         )}
         tabIndex={0}
         role="application"
-        aria-label={`${props.platform === "ios" ? "iOS Simulator" : "Android Emulator"} screen`}
+        aria-label={`${props.platform === "tvos" ? "Apple TV Simulator" : props.platform === "ios" ? "iOS Simulator" : "Android Emulator"} screen`}
         onKeyDown={(event) => {
           if (event.target !== event.currentTarget) return;
           if (event.metaKey && !["r", "R"].includes(event.key)) return;

@@ -644,7 +644,7 @@ function SurfaceIcon({
     case "pull-requests":
       return <PullRequestGlyph.link className="size-3 shrink-0" />;
     case "device":
-      return surface.target?.platform === "ios" ? (
+      return surface.target?.platform === "ios" || surface.target?.platform === "tvos" ? (
         <AppleIcon className="size-3 shrink-0" />
       ) : surface.target?.platform === "android" ? (
         <AndroidIcon className="size-3 shrink-0" />
@@ -1473,7 +1473,8 @@ function DeviceTabTooltip(props: {
       {target ? (
         <span className="text-muted-foreground">
           {host?.label ?? "Device host"} ·{" "}
-          {device?.version ?? (target.platform === "ios" ? "iOS" : "Android")}
+          {device?.version ??
+            (target.platform === "tvos" ? "tvOS" : target.platform === "ios" ? "iOS" : "Android")}
         </span>
       ) : null}
     </div>

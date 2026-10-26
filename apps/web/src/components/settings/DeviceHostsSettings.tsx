@@ -392,10 +392,10 @@ function DeviceHostList({
               .filter((platform) => platform.available)
               .map((platform) => ({
                 key: platform.platform,
-                label: platform.platform === "ios" ? "iOS available" : "Android available",
+                label: `${platform.platform === "tvos" ? "tvOS" : platform.platform === "ios" ? "iOS" : "Android"} available`,
                 warning: false,
                 icon:
-                  platform.platform === "ios" ? (
+                  platform.platform !== "android" ? (
                     // The Apple mark is bottom-heavy; lift it so it does not dip under the label.
                     <AppleIcon className="size-3.5 -translate-y-px" />
                   ) : (

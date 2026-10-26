@@ -137,6 +137,7 @@ async function install(name, version, entry) {
   const platforms = [
     { platform: 'ios', available: ios, ...(!ios ? { reason: 'iOS needs macOS with Xcode and working xcrun simctl.' } : {}) },
     { platform: 'android', available: android, ...(!android ? { reason: 'Android SDK missing. Set ANDROID_HOME or put adb on the SSH PATH.' } : {}) },
+    { platform: 'tvos', available: ios, ...(!ios ? { reason: 'tvOS needs macOS with Xcode and working xcrun simctl.' } : {}) },
   ];
   if (mode === 'probe') {
     if (Number(process.versions.node.split('.')[0]) < 22) throw Error('Node 22 or newer is required on the device host.');

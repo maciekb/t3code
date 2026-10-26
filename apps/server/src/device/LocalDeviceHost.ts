@@ -103,8 +103,9 @@ const platformReason = Effect.fn("LocalDeviceHost.platformReason")(function* (
   platform: DevicePlatform,
 ): Effect.fn.Return<string | null, never, FileSystem.FileSystem | Path.Path> {
   const hostPlatform = yield* HostProcess.Platform;
-  if (platform === "ios") {
-    if (hostPlatform !== "darwin") return "iOS Simulators need macOS with Xcode.";
+  if (platform !== "android") {
+    if (hostPlatform !== "darwin")
+      return `${platform === "tvos" ? "tvOS" : "iOS"} Simulators need macOS with Xcode.`;
     if (!(yield* isCommandAvailable("xcrun"))) return "Xcode command line tools were not found.";
     return null;
   }
@@ -286,7 +287,11 @@ export const make = Effect.fn("LocalDeviceHost.make")(function* () {
 
   const summary: Effect.Effect<DeviceHostSummary> = Effect.gen(function* () {
     const [platforms, hubInstalled, agentDeviceInstalled] = yield* Effect.all([
-      Effect.all([platformAvailability("ios"), platformAvailability("android")]),
+      Effect.all([
+        platformAvailability("ios"),
+        platformAvailability("android"),
+        platformAvailability("tvos"),
+      ]),
       isDeviceHubInstalled(config.baseDir).pipe(
         Effect.provideService(FileSystem.FileSystem, fs),
         Effect.provideService(Path.Path, path),
@@ -814,6 +819,9 @@ export const make = Effect.fn("LocalDeviceHost.make")(function* () {
       origin: running.hub.origin,
       http: httpClient,
       run,
+      appleAvailable: platformAvailability("tvos").pipe(
+        Effect.map((availability) => availability.available),
+      ),
       androidAvailable: platformAvailability("android").pipe(
         Effect.map((availability) => availability.available),
       ),

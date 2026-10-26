@@ -468,7 +468,7 @@ export const make = Effect.fn("EasDeviceHost.make")(function* (config: EasDevice
               const sessionId = yield* expo
                 .create({
                   appId,
-                  platform: device.platform,
+                  platform: "ios",
                   name,
                   maxRunTimeMinutes: config.maxSessionMinutes,
                   maxIdleTimeMinutes: config.idleMinutes,
@@ -837,13 +837,17 @@ export const make = Effect.fn("EasDeviceHost.make")(function* (config: EasDevice
         : {
             platform,
             available: false,
-            reason: "EAS Simulator Android emulators are not supported yet.",
+            reason:
+              platform === "tvos"
+                ? "EAS Simulator tvOS simulators are not supported yet."
+                : "EAS Simulator Android emulators are not supported yet.",
           },
     );
 
   const summary: Effect.Effect<DeviceHostSummary> = Effect.all([
     platformAvailability("ios"),
     platformAvailability("android"),
+    platformAvailability("tvos"),
   ]).pipe(
     Effect.map((platforms) => ({
       id: hostId,

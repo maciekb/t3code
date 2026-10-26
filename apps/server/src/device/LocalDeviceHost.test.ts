@@ -478,6 +478,7 @@ it.effect("keeps local Android and iOS available without ffmpeg", () =>
     expect((yield* onTestHost(host.summary)).platforms).toEqual([
       { platform: "ios", available: true },
       { platform: "android", available: true },
+      { platform: "tvos", available: true },
     ]);
     expect(yield* onTestHost(host.platformAvailability("android"))).toEqual({
       platform: "android",
@@ -485,6 +486,10 @@ it.effect("keeps local Android and iOS available without ffmpeg", () =>
     });
     expect(yield* onTestHost(host.platformAvailability("ios"))).toEqual({
       platform: "ios",
+      available: true,
+    });
+    expect(yield* onTestHost(host.platformAvailability("tvos"))).toEqual({
+      platform: "tvos",
       available: true,
     });
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),

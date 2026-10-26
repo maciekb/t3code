@@ -8,6 +8,7 @@ import {
   resizePreviewMiniPlayer,
   resolvePreviewMiniPlayerFrame,
   resolvePreviewMiniPlayerSourceSize,
+  resolveDeviceMiniPlayerSourceSize,
 } from "./previewMiniPlayerLayout";
 
 const container = { width: 1_000, height: 700 };
@@ -21,6 +22,17 @@ const tallComposer: PreviewMiniPlayerObstacles = {
 };
 const detailsCard = { left: 680, right: 988, bottom: 260 };
 const withCard: PreviewMiniPlayerObstacles = { composer, detailsCard };
+
+it("keeps Apple TV previews widescreen before and after receiving screen configuration", () => {
+  expect(resolveDeviceMiniPlayerSourceSize("tvos", null)).toEqual({ width: 1_000, height: 562.5 });
+  expect(
+    resolveDeviceMiniPlayerSourceSize("tvos", {
+      width: 1920,
+      height: 1080,
+      orientation: "portrait",
+    }),
+  ).toEqual({ width: 1920, height: 1080 });
+});
 
 describe("resolvePreviewMiniPlayerSourceSize", () => {
   it("uses the size the fill viewport had when it was floated", () => {

@@ -49,7 +49,7 @@ describe("native device stream transport", () => {
     vi.unstubAllGlobals();
   });
 
-  function setup(platform: "ios" | "android") {
+  function setup(platform: "ios" | "android" | "tvos") {
     vi.useFakeTimers();
     vi.stubGlobal("VideoDecoder", vi.fn());
     vi.stubGlobal("EncodedVideoChunk", vi.fn());
@@ -66,7 +66,7 @@ describe("native device stream transport", () => {
       onopen: (() => void) | null = null;
       onmessage: ((event: { data: ArrayBuffer }) => void) | null = null;
       onclose: ((event: { code: number; reason: string }) => void) | null = null;
-      send = vi.fn();
+      send = vi.fn<(payload: Uint8Array<ArrayBuffer> | string) => void>();
       close = vi.fn();
       readonly url: string;
       constructor(url: string) {
@@ -83,12 +83,13 @@ describe("native device stream transport", () => {
       onUnauthorized: vi.fn(),
       onMjpegFallback: vi.fn(),
       onInputConnected: vi.fn(),
+      onRemoteButton: vi.fn(),
     };
     const client = createDeviceStreamClient(
       {
         platform,
         deviceId: "test device",
-        preferMjpeg: platform === "ios",
+        preferMjpeg: platform !== "android",
         access: {
           httpBase: "https://environment.test/api/device-hub",
           wsBase: "wss://environment.test/api/device-hub",
@@ -102,6 +103,58 @@ describe("native device stream transport", () => {
     return { client, opened, waitForSocket, events, fetch };
   }
 
+  it("routes tvOS navigation through the host transport while retaining hardware Home", async () => {
+    const { client, opened, events } = setup("tvos");
+    client.start();
+    const socket = await opened;
+    expect(socket.url).toContain("/vendor/serve-sim/helper/ws?");
+    socket.onopen?.();
+    socket.onmessage?.({ data: Uint8Array.of(0x83).buffer });
+    expect(events.onMjpegFallback).toHaveBeenCalledWith(
+      expect.stringContaining("/vendor/serve-sim/helper/test%20device/stream.mjpeg"),
+    );
+    socket.send.mockClear();
+    client.pressButton("up");
+    client.pressButton("down");
+    client.pressButton("left");
+    client.pressButton("select");
+    client.pressButton("back");
+    client.pressButton("home");
+    client.sendKey(
+      { key: "ArrowRight", code: "ArrowRight", metaKey: false, ctrlKey: false } as KeyboardEvent,
+      "down",
+    );
+    client.sendKey(
+      { key: "ArrowRight", code: "ArrowRight", metaKey: false, ctrlKey: false } as KeyboardEvent,
+      "up",
+    );
+    client.sendKey({ key: "Home", code: "Home" } as KeyboardEvent, "down");
+    client.sendKey({ key: "Home", code: "Home" } as KeyboardEvent, "up");
+    client.sendTouch("begin", 0.5, 0.5);
+    client.sendRawTouch("begin", 0.5, 0.5);
+    client.rotate();
+    client.setOrientation("portrait");
+    client.pressButton("appSwitcher");
+    const payloads = socket.send.mock.calls.map(([packet]) => {
+      if (typeof packet === "string") throw new Error("Expected a binary Apple input packet");
+      return { tag: packet[0], ...JSON.parse(new TextDecoder().decode(packet.subarray(1))) };
+    });
+    expect(events.onRemoteButton.mock.calls).toEqual([
+      ["up"],
+      ["down"],
+      ["left"],
+      ["select"],
+      ["back"],
+      ["right"],
+    ]);
+    expect(payloads).toEqual([
+      { tag: 0x04, button: "home", page: 12, usage: 0x40 },
+      { tag: 0x04, button: "home", page: 12, usage: 0x40, phase: "down" },
+      { tag: 0x04, button: "home", page: 12, usage: 0x40, phase: "up" },
+    ]);
+    client.stop();
+  });
+
   it("renews an expired Android ticket when the HTTP upgrade is rejected instead of retrying it forever", async () => {
     const { client, opened, events } = setup("android");
     client.start();
@@ -112,7 +165,7 @@ describe("native device stream transport", () => {
     client.stop();
   });
 
-  it.each(["ios", "android"] as const)(
+  it.each(["ios", "android", "tvos"] as const)(
     "keeps a restarted %s stream connected when the discarded socket closes late",
     async (platform) => {
       const { client, opened, waitForSocket, events } = setup(platform);
@@ -123,7 +176,7 @@ describe("native device stream transport", () => {
       client.start();
       const replacement = await reopened;
       replacement.onopen?.();
-      if (platform === "ios") replacement.onmessage?.({ data: Uint8Array.of(0x83).buffer });
+      if (platform !== "android") replacement.onmessage?.({ data: Uint8Array.of(0x83).buffer });
       replacement.send.mockClear();
       events.onInputConnected.mockClear();
 
@@ -140,7 +193,7 @@ describe("native device stream transport", () => {
     },
   );
 
-  it.each(["ios", "android"] as const)(
+  it.each(["ios", "android", "tvos"] as const)(
     "does not renew credentials or reconnect a stopped %s stream",
     async (platform) => {
       const { client, opened, events } = setup(platform);

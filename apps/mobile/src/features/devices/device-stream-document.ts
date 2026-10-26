@@ -1,5 +1,6 @@
 import type { DeviceHubAccess } from "@t3tools/client-runtime/device/hub-access";
-import type { DevicePlatform } from "@t3tools/contracts";
+import { DeviceTvRemoteButton, type DevicePlatform } from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
 import type { PlatformOSType } from "react-native";
 
 export interface DeviceStreamConfiguration {
@@ -36,6 +37,8 @@ export function deviceStreamDocument(configuration: string, script: string) {
   return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"></head><body><script>window.addEventListener("error",function(){${failure}});window.addEventListener("unhandledrejection",function(){${failure}});\n${safeScript}\ntry{T3DeviceStream.start(${safeConfiguration});}catch{${failure}}</script></body></html>`;
 }
 
+const isRemoteButton = Schema.is(DeviceTvRemoteButton);
+
 export function deviceStreamMessage(data: string) {
   try {
     const message: unknown = JSON.parse(data);
@@ -43,6 +46,8 @@ export function deviceStreamMessage(data: string) {
     if (message.type === "unauthorized" || message.type === "retry") {
       return { type: message.type } as const;
     }
+    if (message.type === "remoteButton" && "button" in message && isRemoteButton(message.button))
+      return { type: message.type, button: message.button } as const;
     if (
       message.type === "input" &&
       "connected" in message &&

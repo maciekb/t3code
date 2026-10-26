@@ -37,10 +37,15 @@ export function resolveDeviceMiniPlayerSourceSize(
 ): PreviewMiniPlayerSize {
   if (!screen) {
     const width = 1_000;
-    return { width, height: width / (platform === "ios" ? 9 / 19.5 : 9 / 20) };
+    return {
+      width,
+      height: width / (platform === "tvos" ? 16 / 9 : platform === "ios" ? 9 / 19.5 : 9 / 20),
+    };
   }
   const landscape =
-    screen.orientation === "landscape_left" || screen.orientation === "landscape_right";
+    platform === "tvos" ||
+    screen.orientation === "landscape_left" ||
+    screen.orientation === "landscape_right";
   const long = Math.max(screen.width, screen.height);
   const short = Math.min(screen.width, screen.height);
   return landscape ? { width: long, height: short } : { width: short, height: long };

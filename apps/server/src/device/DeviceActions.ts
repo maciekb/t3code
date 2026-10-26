@@ -14,6 +14,7 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
 import type { DeviceHostReady } from "./DeviceHost.ts";
+import { pressTvRemoteButton } from "./tvosRemote.ts";
 
 type Runner = DeviceHostReady["run"];
 
@@ -39,6 +40,13 @@ const IOS_ACTIONS: ReadonlySet<DeviceActionType> = new Set([
   "sendPush",
 ]);
 
+const TVOS_ACTIONS: ReadonlySet<DeviceActionType> = new Set([
+  "pressRemoteButton",
+  "setAppearance",
+  "launchApp",
+  "terminateApp",
+]);
+
 const ANDROID_ACTIONS: ReadonlySet<DeviceActionType> = new Set([
   "setAppearance",
   "setTextSize",
@@ -62,7 +70,8 @@ const IOS_TOGGLES = new Set([
 const ANDROID_TOGGLES = new Set(["reduceMotion", "networkEnabled"]);
 
 const supportsAction = (platform: DevicePlatform, input: DeviceActionInput): boolean => {
-  const actions = platform === "ios" ? IOS_ACTIONS : ANDROID_ACTIONS;
+  const actions =
+    platform === "tvos" ? TVOS_ACTIONS : platform === "ios" ? IOS_ACTIONS : ANDROID_ACTIONS;
   if (!actions.has(input.type)) return false;
   if (input.type === "setToggle") {
     return (platform === "ios" ? IOS_TOGGLES : ANDROID_TOGGLES).has(input.setting);
@@ -191,7 +200,10 @@ export const runDeviceAction = Effect.fn("DeviceActions.run")(function* (
       reason: "unsupported",
     });
   }
-  if (platform === "ios") return yield* runIos(ready, input);
+  if (input.type === "pressRemoteButton") {
+    return yield* pressTvRemoteButton(ready, input.deviceId, input.button);
+  }
+  if (platform !== "android") return yield* runIos(ready, input);
   return yield* runAndroid(ready.run, input);
 });
 
@@ -465,6 +477,16 @@ export const readDeviceDetail = Effect.fn("DeviceActions.readDetail")(function* 
   platform: DevicePlatform,
   deviceId: string,
 ): Effect.fn.Return<{ settings: DeviceSettings; foregroundApp: DeviceForegroundApp | null }> {
+  if (platform === "tvos") {
+    const appearance = yield* quiet(
+      simctl(ready.run, deviceId, ["ui", "appearance"], "appearance"),
+    );
+    const value = appearance?.trim().toLowerCase();
+    return {
+      settings: value === "light" || value === "dark" ? { appearance: value } : {},
+      foregroundApp: null,
+    };
+  }
   return platform === "ios"
     ? yield* readIos(ready, deviceId)
     : yield* readAndroid(ready.run, deviceId);

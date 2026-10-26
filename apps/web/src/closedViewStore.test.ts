@@ -29,6 +29,23 @@ const snapshot: PreviewSessionSnapshot = {
 };
 
 describe("closedViewStore", () => {
+  it("retains saved Apple TV tabs when migrating closed-view history", async () => {
+    const entry: ClosedViewEntry = {
+      id: "closed-tv",
+      kind: "panel-tab",
+      threadRef: refA,
+      surface: {
+        kind: "device",
+        id: "device:mac:tv",
+        target: { hostId: "mac", deviceId: "tv", platform: "tvos", name: "Apple TV" },
+      },
+    };
+    const { storage, name } = useClosedViewStore.persist.getOptions();
+    await storage!.setItem(name!, { state: { entries: [entry] }, version: 1 });
+    await useClosedViewStore.persist.rehydrate();
+    expect(useClosedViewStore.getState().entries).toEqual([entry]);
+  });
+
   it.each([
     { id: "bad", kind: "browser", threadRef: refA, snapshot: {} },
     {

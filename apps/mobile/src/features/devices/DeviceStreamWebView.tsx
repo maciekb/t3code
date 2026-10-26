@@ -12,6 +12,7 @@ import {
 import { Platform, View } from "react-native";
 import { WebView } from "react-native-webview";
 import type { DeviceStreamStatus } from "@t3tools/client-runtime/device/stream";
+import type { DeviceTvRemoteButton } from "@t3tools/contracts";
 
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
 import { AppText } from "../../components/ui/AppText";
@@ -28,12 +29,18 @@ export interface DeviceStreamRef {
   back: () => void;
   appSwitcher: () => void;
   rotate: () => void;
+  up: () => void;
+  down: () => void;
+  left: () => void;
+  right: () => void;
+  select: () => void;
 }
 
 type NativeStreamBridge = {
   readonly ref?: Ref<DeviceStreamRef>;
   readonly onUnauthorized: () => Promise<void>;
   readonly onInputConnected: (connected: boolean) => Promise<void>;
+  readonly onRemoteButton: (button: DeviceTvRemoteButton) => void;
 };
 
 export function DeviceStreamWebView({
@@ -57,6 +64,7 @@ export function DeviceStreamWebView({
       background={props.colors.background}
       onUnauthorized={props.onUnauthorized}
       onInputConnected={props.onInputConnected}
+      onRemoteButton={props.onRemoteButton}
       onRetry={() => {
         processRetried.current = false;
         setAttempt((attempt) => attempt + 1);
@@ -83,6 +91,7 @@ function DeviceStreamDocumentView({
   background,
   onUnauthorized,
   onInputConnected,
+  onRemoteButton,
   onRetry,
   onStreaming,
   onRecoverProcess,
@@ -130,6 +139,11 @@ function DeviceStreamDocumentView({
     back: () => command("back"),
     appSwitcher: () => command("appSwitcher"),
     rotate: () => command("rotate"),
+    up: () => command("up"),
+    down: () => command("down"),
+    left: () => command("left"),
+    right: () => command("right"),
+    select: () => command("select"),
   }));
   const resetInput = useEffectEvent(() => void onInputConnected(false));
   useLayoutEffect(() => {
@@ -172,6 +186,7 @@ function DeviceStreamDocumentView({
           if (message?.type === "unauthorized") void onUnauthorized();
           else if (message?.type === "input") void onInputConnected(message.connected);
           else if (message?.type === "retry") onRetry();
+          else if (message?.type === "remoteButton") onRemoteButton(message.button);
           else if (message?.type === "status") {
             setStarted(true);
             if (message.status === "error") fail(message.detail ?? "Device stream failed.");

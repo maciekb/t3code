@@ -201,7 +201,7 @@ function DevicePreviewScreen({
         setStreamAttempt((attempt) => attempt + 1);
       },
     },
-    ...(preview?.session.platform === "android"
+    ...(preview?.session.platform === "android" || preview?.session.platform === "tvos"
       ? [
           {
             id: "back",
@@ -216,7 +216,7 @@ function DevicePreviewScreen({
       id: "app-switcher",
       title: "App switcher",
       icon: "square.on.square",
-      disabled: !inputConnected,
+      disabled: !inputConnected || preview?.session.platform === "tvos",
       onPress: () => streamRef.current?.appSwitcher(),
     },
     ...(preview?.session.platform === "ios"
@@ -285,6 +285,59 @@ function DevicePreviewScreen({
           ) : null}
         </View>
       )}
+      {preview?.session.platform === "tvos" ? (
+        <View
+          className="absolute bottom-0 z-10 self-center items-center gap-1 p-3"
+          style={{ paddingBottom: Math.max(insets.bottom, 12) }}
+        >
+          <ControlPill
+            accessibilityLabel="Up"
+            icon="arrow.up"
+            disabled={!inputConnected}
+            onPress={() => streamRef.current?.up()}
+          />
+          <View className="flex-row items-center gap-2">
+            <ControlPill
+              accessibilityLabel="Left"
+              icon="arrow.left"
+              disabled={!inputConnected}
+              onPress={() => streamRef.current?.left()}
+            />
+            <ControlPill
+              accessibilityLabel="Select"
+              icon="circle"
+              disabled={!inputConnected}
+              onPress={() => streamRef.current?.select()}
+            />
+            <ControlPill
+              accessibilityLabel="Right"
+              icon="arrow.right"
+              disabled={!inputConnected}
+              onPress={() => streamRef.current?.right()}
+            />
+          </View>
+          <View className="flex-row items-center gap-2">
+            <ControlPill
+              accessibilityLabel="Back / Menu"
+              icon="chevron.left"
+              disabled={!inputConnected}
+              onPress={() => streamRef.current?.back()}
+            />
+            <ControlPill
+              accessibilityLabel="Down"
+              icon="arrow.down"
+              disabled={!inputConnected}
+              onPress={() => streamRef.current?.down()}
+            />
+            <ControlPill
+              accessibilityLabel="Home"
+              icon="house"
+              disabled={!inputConnected}
+              onPress={pressHome}
+            />
+          </View>
+        </View>
+      ) : null}
       {controlsVisible ? (
         <Animated.View
           entering={OVERLAY_ENTERING}
@@ -369,6 +422,7 @@ function OpenDevicePreview({
   readonly onInputConnected: (connected: boolean) => Promise<void>;
 }) {
   const { session } = preview;
+  const runAction = useAtomCommand(deviceEnvironment.action);
   const { themeVariables } = useAppearancePreferences();
   const { access, error, refresh } = useDeviceHubAccess(environmentId, session.hostId);
   const onUnauthorized = async () => refreshDeviceHubAccess(environmentId);
@@ -392,6 +446,17 @@ function OpenDevicePreview({
       }}
       onUnauthorized={onUnauthorized}
       onInputConnected={onInputConnected}
+      onRemoteButton={(button) => {
+        void runAction({
+          environmentId,
+          input: {
+            type: "pressRemoteButton",
+            hostId: session.hostId,
+            deviceId: session.deviceId,
+            button,
+          },
+        });
+      }}
     />
   ) : (
     <View className="flex-1 items-center justify-center gap-4 px-6">

@@ -21,8 +21,14 @@ import * as McpToolAccess from "../../McpToolAccess.ts";
 import { DeviceScreenshotToolkit, DeviceStandardToolkit, DeviceToolkit } from "./tools.ts";
 
 function agentDeviceTargetArgs(device: DeviceSummary): ReadonlyArray<string> {
-  return device.platform === "ios"
-    ? ["--platform", "ios", "--udid", device.id]
+  return device.platform !== "android"
+    ? [
+        "--platform",
+        "ios",
+        ...(device.platform === "tvos" ? ["--target", "tv"] : []),
+        "--udid",
+        device.id,
+      ]
     : ["--platform", "android", "--serial", device.id];
 }
 
@@ -42,7 +48,7 @@ export function agentDeviceQuickStart(
     .join(" ");
   const platformNotes = cloud
     ? "This is an EAS Simulator session in the cloud. It bills the Expo account per minute until it stops, so call device_close with shutdown: true when you are done. It starts with no apps installed: install-from-source <url> installs a build from a URL (iOS needs a .tar.gz containing a .app), and install uploads one from this machine."
-    : device.platform === "ios"
+    : device.platform !== "android"
       ? "First use builds an XCTest runner and can take a couple of minutes; later commands are fast."
       : "The Android snapshot helper installs itself on first use.";
   return [
@@ -51,8 +57,13 @@ export function agentDeviceQuickStart(
     "Typical loop:",
     `  ${executable} open <bundle-or-package-id> ${target}     # or: open <app> <deep-link-url>`,
     `  ${executable} snapshot -i ${target}                     # accessibility tree with @eN refs`,
-    `  ${executable} click @e3 ${target}`,
-    `  ${executable} fill @e5 "text" ${target}`,
+    ...(device.platform === "tvos"
+      ? [
+          `  ${executable} tv-remote press down ${target}`,
+          `  ${executable} tv-remote press select ${target}`,
+          "Apple TV uses focus navigation: use tv-remote up/down/left/right/select/menu/home/back, then snapshot again.",
+        ]
+      : [`  ${executable} click @e3 ${target}`, `  ${executable} fill @e5 "text" ${target}`]),
     `  ${executable} screenshot /tmp/shot.png ${target}        # or call device_screenshot`,
     `  ${executable} install <app> <path-to-.app-or-.apk> ${target}`,
     `Prefer snapshot refs over coordinates. Run ${executable} help for workflow guides and ${executable} <command> --help for flags.`,
@@ -106,7 +117,7 @@ const pickDevice = Effect.fn("handlers.pickDevice")(function* (
   const platforms = new Set(candidates.map((device) => device.platform));
   if (input.platform === undefined && platforms.size > 1) {
     return yield* new DeviceToolUnavailableError({
-      reason: "Both iOS and Android devices are available; pass platform or deviceId.",
+      reason: "Multiple device platforms are available; pass platform or deviceId.",
     });
   }
   return candidates.find((device) => device.booted) ?? candidates[0]!;

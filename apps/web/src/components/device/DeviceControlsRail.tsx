@@ -2,6 +2,10 @@ import type { DevicePlatform } from "@t3tools/contracts";
 import {
   Camera,
   ChevronLeft,
+  ChevronRight,
+  ChevronUp,
+  ChevronDown,
+  Circle,
   Home,
   Keyboard,
   Box,
@@ -67,6 +71,58 @@ export function DeviceControlsRail(props: {
         >
           <Home />
         </RailButton>
+        {props.platform === "tvos" ? (
+          <>
+            <RailButton
+              tooltipSide={popupSide}
+              label="Up"
+              disabled={inputDisabled}
+              onClick={() => handle?.pressButton("up")}
+            >
+              <ChevronUp />
+            </RailButton>
+            <RailButton
+              tooltipSide={popupSide}
+              label="Left"
+              disabled={inputDisabled}
+              onClick={() => handle?.pressButton("left")}
+            >
+              <ChevronLeft />
+            </RailButton>
+            <RailButton
+              tooltipSide={popupSide}
+              label="Select"
+              disabled={inputDisabled}
+              onClick={() => handle?.pressButton("select")}
+            >
+              <Circle />
+            </RailButton>
+            <RailButton
+              tooltipSide={popupSide}
+              label="Right"
+              disabled={inputDisabled}
+              onClick={() => handle?.pressButton("right")}
+            >
+              <ChevronRight />
+            </RailButton>
+            <RailButton
+              tooltipSide={popupSide}
+              label="Down"
+              disabled={inputDisabled}
+              onClick={() => handle?.pressButton("down")}
+            >
+              <ChevronDown />
+            </RailButton>
+            <RailButton
+              tooltipSide={popupSide}
+              label="Back / Menu"
+              disabled={inputDisabled}
+              onClick={() => handle?.pressButton("back")}
+            >
+              <ChevronLeft />
+            </RailButton>
+          </>
+        ) : null}
         {props.platform === "android" ? (
           <>
             <RailButton
@@ -114,7 +170,7 @@ export function DeviceControlsRail(props: {
               </MenuPopup>
             </Menu>
           </>
-        ) : (
+        ) : props.platform === "ios" ? (
           <RailButton
             tooltipSide={popupSide}
             label="Rotate device"
@@ -123,7 +179,7 @@ export function DeviceControlsRail(props: {
           >
             <RotateCcw />
           </RailButton>
-        )}
+        ) : null}
         <RailDivider />
         <RailButton
           tooltipSide={popupSide}
